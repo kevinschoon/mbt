@@ -12,11 +12,11 @@ import (
 )
 
 var (
-	app      = cli.App("marathon-bk", "Marathon Backup")
-	endpoint = app.StringOpt("e endpoint", "http://localhost:8080", "Marathon endpoint e.g. http://localhost:8080")
-	user     = app.StringOpt("u user", "", "HTTP Basic Auth user:password")
-	force    = app.BoolOpt("f force", false, "Force by overwriting existing files")
-	path     = app.StringOpt("p path", *endpoint, "Path to save to or restore from")
+	app          = cli.App("marathon-bk", "Marathon Backup")
+	endpointFlag = app.StringOpt("e endpoint", "http://localhost:8080", "Marathon endpoint e.g. http://localhost:8080")
+	userFlag     = app.StringOpt("u user", "", "HTTP Basic Auth user:password")
+	forceFlag    = app.BoolOpt("f force", false, "Force by overwriting existing files")
+	pathFlag     = app.StringOpt("p path", "", "Path to save to or restore from")
 )
 
 func failOnError(err error) {
@@ -26,10 +26,20 @@ func failOnError(err error) {
 	}
 }
 
+func getPath() (p string) {
+	if *pathFlag == "" {
+		p = strings.Replace(*endpointFlag, "https://", "", 1)
+		p = strings.Replace(p, "http://", "", 1)
+	} else {
+		p = *pathFlag
+	}
+	return p
+}
+
 func getClient() (marathon.Marathon, error) {
 	config := marathon.NewDefaultConfig()
-	config.URL = *endpoint
-	u := strings.Split(*user, ":")
+	config.URL = *endpointFlag
+	u := strings.Split(*userFlag, ":")
 	if len(u) == 2 {
 		config.HTTPBasicAuthUser = u[0]
 		config.HTTPBasicPassword = u[1]
@@ -45,9 +55,9 @@ func mkdir(path string) (err error) {
 	return err
 }
 
-func write(path string, data []byte) (err error) {
+func write(path string, data []byte, force bool) (err error) {
 	fmt.Printf("Writing to %s\n", path)
-	if _, err = os.Stat(path); os.IsExist(err) && !*force {
+	if _, err = os.Stat(path); os.IsExist(err) && !force {
 		return fmt.Errorf("Data already saved at %s", path)
 	}
 	return ioutil.WriteFile(path, data, 0644)
@@ -61,7 +71,7 @@ func read(path string) (data []byte, err error) {
 	return ioutil.ReadFile(path)
 }
 
-func save(path string, app marathon.Application, client marathon.Marathon) (err error) {
+func save(path string, app marathon.Application, client marathon.Marathon, force bool) (err error) {
 	name := strings.Replace(app.ID, "/", "", -1)
 	dir := fmt.Sprintf("%s/%s", path, name)
 	if err := mkdir(dir); err != nil {
@@ -71,7 +81,7 @@ func save(path string, app marathon.Application, client marathon.Marathon) (err 
 	if err != nil {
 		return err
 	}
-	if err := write(dir+"/current", data); err != nil {
+	if err := write(dir+"/current", data, force); err != nil {
 		return err
 	}
 	versions, err := client.ApplicationVersions(name)
@@ -87,7 +97,7 @@ func save(path string, app marathon.Application, client marathon.Marathon) (err 
 		if err != nil {
 			return err
 		}
-		if err = write(dir+"/"+version, data); err != nil {
+		if err = write(dir+"/"+version, data, force); err != nil {
 			return err
 		}
 	}
@@ -96,24 +106,26 @@ func save(path string, app marathon.Application, client marathon.Marathon) (err 
 
 func backup() {
 	client, err := getClient()
+	path := getPath()
 	failOnError(err)
 	applications, err := client.Applications(url.Values{})
 	failOnError(err)
-	failOnError(mkdir(*path))
+	failOnError(mkdir(path))
 	for _, app := range applications.Apps {
-		failOnError(save(*path, app, client))
+		failOnError(save(path, app, client, *forceFlag))
 	}
 }
 
 func restore() {
 	client, err := getClient()
 	failOnError(err)
-	file, err := ioutil.ReadDir(*path)
+	path := getPath()
+	file, err := ioutil.ReadDir(path)
 	failOnError(err)
 	for _, file := range file {
 		if file.IsDir() {
 			app := &marathon.Application{}
-			data, err := read(fmt.Sprintf("%s/%s/current", *path, file.Name()))
+			data, err := read(fmt.Sprintf("%s/%s/current", path, file.Name()))
 			failOnError(err)
 			failOnError(json.Unmarshal(data, app))
 			*app.Instances = 0
