@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -48,11 +49,19 @@ func getClient() (marathon.Marathon, error) {
 }
 
 func mkdir(path string) (err error) {
-	fmt.Printf("mkdir %s\n", path)
-	if _, err = os.Stat(path); os.IsNotExist(err) {
-		err = os.Mkdir(path, 0775)
+	split := strings.Split(path, "/")
+	fmt.Println(split)
+	for i, p := range split {
+		if i > 0 {
+			p = strings.Join(split[:i], "/") + "/" + p
+		}
+		if _, err = os.Stat(p); os.IsNotExist(err) {
+			if err = os.Mkdir(p, 0755); err != nil {
+				return err
+			}
+		}
 	}
-	return err
+	return nil
 }
 
 func write(path string, data []byte, force bool) (err error) {
@@ -72,8 +81,7 @@ func read(path string) (data []byte, err error) {
 }
 
 func save(path string, app marathon.Application, client marathon.Marathon, force bool) (err error) {
-	name := strings.Replace(app.ID, "/", "", -1)
-	dir := fmt.Sprintf("%s/%s", path, name)
+	dir := fmt.Sprintf("%s%s", path, app.ID)
 	if err := mkdir(dir); err != nil {
 		return err
 	}
@@ -84,12 +92,12 @@ func save(path string, app marathon.Application, client marathon.Marathon, force
 	if err := write(dir+"/current", data, force); err != nil {
 		return err
 	}
-	versions, err := client.ApplicationVersions(name)
+	versions, err := client.ApplicationVersions(app.ID)
 	if err != nil {
 		return err
 	}
 	for _, version := range versions.Versions {
-		prev, err := client.ApplicationByVersion(name, version)
+		prev, err := client.ApplicationByVersion(app.ID, version)
 		if err != nil {
 			return err
 		}
@@ -102,6 +110,33 @@ func save(path string, app marathon.Application, client marathon.Marathon, force
 		}
 	}
 	return nil
+}
+
+func ReadDir(dir string) (apps []*marathon.Application, err error) {
+	walk := func(path string, info os.FileInfo, err error) error {
+		if info.Mode().IsRegular() {
+			split := strings.Split(path, "/")
+			if split[len(split)-1] == "current" {
+				raw, err := ioutil.ReadFile(path)
+				if err != nil {
+					return err
+				}
+				app := &marathon.Application{}
+				if err = json.Unmarshal(raw, app); err != nil {
+					return err
+				}
+				apps = append(apps, app)
+			}
+		}
+		if info.Mode().IsDir() && path != dir {
+			_, err = ReadDir(path)
+		}
+		return err
+	}
+	if err = filepath.Walk(dir, walk); err != nil {
+		return nil, err
+	}
+	return apps, nil
 }
 
 func backup() {
@@ -119,20 +154,13 @@ func backup() {
 func restore() {
 	client, err := getClient()
 	failOnError(err)
-	path := getPath()
-	file, err := ioutil.ReadDir(path)
+	apps, err := ReadDir(getPath())
 	failOnError(err)
-	for _, file := range file {
-		if file.IsDir() {
-			app := &marathon.Application{}
-			data, err := read(fmt.Sprintf("%s/%s/current", path, file.Name()))
-			failOnError(err)
-			failOnError(json.Unmarshal(data, app))
-			*app.Instances = 0
-			*app.Fetch = make([]marathon.Fetch, 0)
-			if _, err := client.CreateApplication(app); err != nil {
-				fmt.Println(err.Error())
-			}
+	for _, app := range apps {
+		*app.Instances = 0
+		*app.Fetch = make([]marathon.Fetch, 0)
+		if _, err := client.CreateApplication(app); err != nil {
+			fmt.Println(err.Error())
 		}
 	}
 }
