@@ -50,7 +50,6 @@ func getClient() (marathon.Marathon, error) {
 
 func mkdir(path string) (err error) {
 	split := strings.Split(path, "/")
-	fmt.Println(split)
 	for i, p := range split {
 		if i > 0 {
 			p = strings.Join(split[:i], "/") + "/" + p
