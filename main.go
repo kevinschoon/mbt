@@ -71,14 +71,6 @@ func write(path string, data []byte, force bool) (err error) {
 	return ioutil.WriteFile(path, data, 0644)
 }
 
-func read(path string) (data []byte, err error) {
-	fmt.Printf("Reading from %s\n", path)
-	if _, err = os.Stat(path); os.IsNotExist(err) {
-		return data, fmt.Errorf("Path %s not found", path)
-	}
-	return ioutil.ReadFile(path)
-}
-
 func save(path string, app marathon.Application, client marathon.Marathon, force bool) (err error) {
 	dir := fmt.Sprintf("%s%s", path, app.ID)
 	if err := mkdir(dir); err != nil {
