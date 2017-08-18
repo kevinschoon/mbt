@@ -5,7 +5,7 @@ application configurations via REST API.
 
 ### Installation
 
-    go get github.com/kevinschoon/marathon-bk
+    go get github.com/mesanine/mbt
     
 
 ### Usage
