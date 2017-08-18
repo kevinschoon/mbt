@@ -1,5 +1,8 @@
 # mbt
 
+[![CircleCI](https://img.shields.io/circleci/project/github/mesanine/mbt.svg)]()
+[![Docker Build Status](https://img.shields.io/docker/build/mesanine/mbt.svg)]()
+
 Simple tool to backup [Marathon](https://mesosphere.github.io/marathon/) 
 application configurations via REST API. 
 

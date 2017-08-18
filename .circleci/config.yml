@@ -1,0 +1,12 @@
+version: 2
+jobs:
+  build:
+    working_directory: ~/build
+    docker:
+      - image: quay.io/vektorcloud/cibase:latest
+    steps:
+      - checkout
+      - setup_remote_docker:
+          version: 17.05.0-ce
+      - run: make docker
+      - run: make deploy
