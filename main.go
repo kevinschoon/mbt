@@ -12,40 +12,11 @@ import (
 	"strings"
 )
 
-var (
-	app          = cli.App("marathon-bk", "Marathon Backup")
-	endpointFlag = app.StringOpt("e endpoint", "http://localhost:8080", "Marathon endpoint e.g. http://localhost:8080")
-	userFlag     = app.StringOpt("u user", "", "HTTP Basic Auth user:password")
-	forceFlag    = app.BoolOpt("f force", false, "Force by overwriting existing files")
-	pathFlag     = app.StringOpt("p path", "", "Path to save to or restore from")
-)
-
-func failOnError(err error) {
+func maybe(err error) {
 	if err != nil {
 		fmt.Println(err.Error())
 		os.Exit(1)
 	}
-}
-
-func getPath() (p string) {
-	if *pathFlag == "" {
-		p = strings.Replace(*endpointFlag, "https://", "", 1)
-		p = strings.Replace(p, "http://", "", 1)
-	} else {
-		p = *pathFlag
-	}
-	return p
-}
-
-func getClient() (marathon.Marathon, error) {
-	config := marathon.NewDefaultConfig()
-	config.URL = *endpointFlag
-	u := strings.Split(*userFlag, ":")
-	if len(u) == 2 {
-		config.HTTPBasicAuthUser = u[0]
-		config.HTTPBasicPassword = u[1]
-	}
-	return marathon.NewClient(config)
 }
 
 func mkdir(path string) (err error) {
@@ -130,35 +101,60 @@ func ReadDir(dir string) (apps []*marathon.Application, err error) {
 	return apps, nil
 }
 
-func backup() {
-	client, err := getClient()
-	path := getPath()
-	failOnError(err)
-	applications, err := client.Applications(url.Values{})
-	failOnError(err)
-	failOnError(mkdir(path))
-	for _, app := range applications.Apps {
-		failOnError(save(path, app, client, *forceFlag))
-	}
-}
-
-func restore() {
-	client, err := getClient()
-	failOnError(err)
-	apps, err := ReadDir(getPath())
-	failOnError(err)
-	for _, app := range apps {
-		*app.Instances = 0
-		*app.Fetch = make([]marathon.Fetch, 0)
-		if _, err := client.CreateApplication(app); err != nil {
-			fmt.Println(err.Error())
-		}
-	}
-}
-
 func main() {
-	app.Command("backup", "Backup the given Marathon endpoint", func(cmd *cli.Cmd) { cmd.Action = backup })
-	app.Command("restore", "Restore the given Marathon endpoint", func(cmd *cli.Cmd) { cmd.Action = restore })
+	app := cli.App("mbt", "Marathon Backup Tool")
+	var (
+		client       marathon.Marathon
+		endpointFlag = app.StringOpt("e endpoint", "http://localhost:8080", "Marathon endpoint e.g. http://localhost:8080")
+		userFlag     = app.StringOpt("u user", "", "HTTP Basic Auth user:password")
+	)
+
+	app.Spec = "[OPTIONS]"
+
+	app.Before = func() {
+		config := marathon.NewDefaultConfig()
+		config.URL = *endpointFlag
+		u := strings.Split(*userFlag, ":")
+		if len(u) == 2 {
+			config.HTTPBasicAuthUser = u[0]
+			config.HTTPBasicPassword = u[1]
+		}
+		c, err := marathon.NewClient(config)
+		maybe(err)
+		client = c
+	}
+	app.Command("backup", "Backup the given Marathon endpoint", func(cmd *cli.Cmd) {
+		var (
+			path  = cmd.StringArg("PATH", "", "path to restore from")
+			force = cmd.BoolOpt("f force", false, "force writing backup files")
+		)
+		cmd.Spec = "[OPTIONS] PATH"
+		cmd.Action = func() {
+			applications, err := client.Applications(url.Values{})
+			maybe(err)
+			maybe(mkdir(*path))
+			for _, app := range applications.Apps {
+				maybe(save(*path, app, client, *force))
+			}
+		}
+	})
+	app.Command("restore", "Restore the given Marathon endpoint", func(cmd *cli.Cmd) {
+		var (
+			path = cmd.StringArg("PATH", "", "path to restore from")
+		)
+		cmd.Spec = "[OPTIONS] PATH"
+		cmd.Action = func() {
+			apps, err := ReadDir(*path)
+			maybe(err)
+			for _, app := range apps {
+				*app.Instances = 0
+				*app.Fetch = make([]marathon.Fetch, 0)
+				if _, err := client.CreateApplication(app); err != nil {
+					fmt.Println(err.Error())
+				}
+			}
+		}
+	})
 	if err := app.Run(os.Args); err != nil {
 		fmt.Println(err)
 		os.Exit(1)

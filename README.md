@@ -1,8 +1,7 @@
-# marathon-bk
+# mbt
+
 Simple tool to backup [Marathon](https://mesosphere.github.io/marathon/) 
-application configurations via REST API. A more thorough solution is to backup 
-Marathon's Zookeeper state however I have found that to be inconvient... hence
-marathon-bk!
+application configurations via REST API. 
 
 ### Installation
 
@@ -11,10 +10,31 @@ marathon-bk!
 
 ### Usage
 
+
+    Usage: mbt [OPTIONS] COMMAND [arg...]
+
+    Marathon Backup Tool
+
+    Options:
+      -e, --endpoint="http://localhost:8080"   Marathon endpoint e.g. http://localhost:8080
+      -u, --user=""                            HTTP Basic Auth user:password
+
+    Commands:
+      backup       Backup the given Marathon endpoint
+      restore      Restore the given Marathon endpoint
+
+    Run 'mbt COMMAND --help' for more information on a command.
+
 #### Backup
 
-    marathon-bk backup --endpoint=http://localhost:8080 --user admin:admin
+    mbt --endpoint=http://localhost:8080 --user admin:admin backup ./my-backup-path
     
 #### Restore
 
-    marathon-bk restore --endpoint=http://localhost:8080 --user admin:admin
+    mbt --endpoint=http://localhost:8080 --user admin:admin restore ./my-restore-path
+
+
+#### TODO
+
+    * tar/gzip backup files
+    * remote save / restore path
